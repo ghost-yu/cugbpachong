@@ -2,9 +2,10 @@ import os
 import smtplib
 from email.mime.text import MIMEText
 from playwright.sync_api import sync_playwright
+# 必须引入 stealth
+from playwright_stealth import stealth_sync
 import time
 import random
-import math
 
 # --- 配置 ---
 STUDENT_ID = os.environ.get("STUDENT_ID")
@@ -32,124 +33,144 @@ def send_email(subject, content):
     except Exception as e:
         print(f"邮件发送失败: {e}")
 
-# 生成人类行为轨迹（S型加速减速）
-def get_track(distance):
-    track = []
-    current = 0
-    mid = distance * 4 / 5
-    t = 0.2
-    v = 0
+# 更加平滑的仿真轨迹算法
+def mouse_slide(page, start_x, start_y, end_x, end_y):
+    # 1. 鼠标先移动到起点 (模拟人类寻找滑块的过程)
+    page.mouse.move(start_x, start_y, steps=10)
+    time.sleep(0.2)
+    page.mouse.down()
     
-    while current < distance:
-        if current < mid:
-            a = 2  # 加速
-        else:
-            a = -3 # 减速
-        v0 = v
-        v = v0 + a * t
-        move = v0 * t + 1 / 2 * a * t * t
-        current += move
-        track.append(round(move))
-    return track
+    # 2. 计算距离
+    distance = end_x - start_x
+    steps = random.randint(25, 35) # 步数更多，更细腻
+    
+    for i in range(steps):
+        # 缓动函数：先快后慢
+        progress = i / steps
+        # easeOutQuad 算法
+        move_x = start_x + distance * (1 - (1 - progress) * (1 - progress))
+        
+        # Y轴微小抖动
+        move_y = start_y + random.uniform(-3, 3)
+        
+        page.mouse.move(move_x, move_y)
+        time.sleep(random.uniform(0.01, 0.03))
+    
+    # 3. 滑到终点后稍微停顿
+    page.mouse.move(end_x, end_y)
+    time.sleep(0.5)
+    page.mouse.up()
 
 def run():
     with sync_playwright() as p:
-        # 增加反爬参数
+        # 启动参数优化
         browser = p.chromium.launch(
             headless=True,
             args=[
                 "--no-sandbox",
                 "--disable-blink-features=AutomationControlled",
-                "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+                "--disable-infobars",
+                "--window-size=1920,1080"
             ]
         )
-        context = browser.new_context()
-        # 注入 JS 脚本，隐藏 webdriver 特征（关键！）
-        context.add_init_script("""
-            Object.defineProperty(navigator, 'webdriver', {
-                get: () => undefined
-            });
-        """)
+        context = browser.new_context(
+            viewport={"width": 1920, "height": 1080},
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        )
         
+        # --- 关键：开启隐身模式 ---
         page = context.new_page()
+        stealth_sync(page) 
 
         try:
             print("1. 访问登录页...")
             page.goto(LOGIN_URL)
             page.wait_for_load_state("networkidle")
-
+            
+            # 确保页面元素加载完毕
+            page.wait_for_selector("#username", state="visible")
+            
             print("2. 填写账号密码...")
             page.fill("#username", STUDENT_ID)
             page.fill("#password", PASSWORD)
-            time.sleep(random.uniform(0.5, 1.5))
+            time.sleep(1)
 
-            print("3. 智能拖动滑块...")
-            slider = page.locator(".captcha-move-drag")
-            slider_box = slider.bounding_box()
-            container = page.locator("#j_digitPicture")
-            container_box = container.bounding_box()
-
-            if slider_box and container_box:
-                start_x = slider_box["x"] + slider_box["width"] / 2
-                start_y = slider_box["y"] + slider_box["height"] / 2
-                # 计算需要移动的总距离
-                distance = container_box["width"] - slider_box["width"] + random.randint(2, 5) # 稍微多滑一点点
-
-                page.mouse.move(start_x, start_y)
-                page.mouse.down()
+            # 重试机制：如果第一次没滑成功，再试一次
+            for attempt in range(2):
+                print(f"3. 处理滑块 (第 {attempt+1} 次尝试)...")
                 
-                # 获取模拟轨迹
-                tracks = get_track(distance)
+                slider = page.locator(".captcha-move-drag")
+                container = page.locator("#j_digitPicture")
                 
-                # 开始移动
-                current_x = start_x
-                for step in tracks:
-                    current_x += step
-                    # 在 Y 轴加入微小抖动
-                    current_y = start_y + random.randint(-2, 2)
-                    page.mouse.move(current_x, current_y)
-                    # 随机停顿，模拟网络波动或人手
-                    time.sleep(random.uniform(0.01, 0.03))
+                # 强制等待滑块可见
+                if not slider.is_visible():
+                    print("   滑块不可见，可能无需验证或页面加载失败")
+                    break
 
-                # 模拟滑过头了回退一点点
-                page.mouse.move(current_x - 3, start_y)
-                time.sleep(0.5)
-                page.mouse.up()
-                
-                print("   滑块动作结束，等待验证...")
-                time.sleep(2) 
-            
-            print("4. 点击登录...")
-            page.click("#enterBtn")
+                slider_box = slider.bounding_box()
+                container_box = container.bounding_box()
+
+                if slider_box and container_box:
+                    start_x = slider_box["x"] + slider_box["width"] / 2
+                    start_y = slider_box["y"] + slider_box["height"] / 2
+                    end_x = start_x + container_box["width"] - slider_box["width"]
+                    
+                    # 执行滑动
+                    mouse_slide(page, start_x, start_y, end_x, start_y)
+                    
+                    # 等待验证结果
+                    time.sleep(2)
+                    
+                    # 检查是否出现成功标志（通常成功后滑块上的文字会变，或者出现对勾）
+                    # 这里通过判断是否还在登录页来侧面验证
+                    page.click("#enterBtn")
+                    time.sleep(3) # 等待跳转
+                    
+                    if "login" not in page.url:
+                        print("   验证成功，正在跳转...")
+                        break
+                    else:
+                        print("   验证失败，准备重试...")
+                        # 刷新页面重置滑块
+                        if attempt == 0:
+                            page.reload()
+                            page.wait_for_load_state("networkidle")
+                            page.fill("#username", STUDENT_ID)
+                            page.fill("#password", PASSWORD)
+                            time.sleep(1)
+
+            # 最终检查
             page.wait_for_load_state("networkidle")
-            time.sleep(5) # 必须等待跳转
-
-            # 截图保存，方便排查错误（见下一步骤）
-            page.screenshot(path="debug_screenshot.png")
-
+            
             if "login" in page.url:
-                print("【失败】依然停留在登录页，截图已保存。")
-                # 可以尝试发邮件把报错截图发给自己（需要更复杂的邮件代码），这里先只发文字
-                # send_email("脚本报警：登录失败", "GitHub Actions 无法通过滑块验证，请检查 Actions Artifacts 查看截图。")
+                print("【最终失败】无法通过滑块验证。")
+                page.screenshot(path="final_error.png")
                 return
 
-            print("5. 登录成功！检查成绩...")
+            print("4. 登录成功！获取成绩...")
+            # 必须等待 cookie 种下
+            time.sleep(3)
             page.goto(TARGET_URL)
             time.sleep(3)
+            
             content = page.content()
-            page.screenshot(path="result_screenshot.png")
+            page.screenshot(path="result_page.png") # 截图留底
 
             if "暂无审查结果" in content:
-                print("--- 暂无结果 ---")
+                print("--- 监控中：暂无结果 ---")
             elif "error" in content:
-                print("--- 页面加载异常 ---")
+                print("--- 异常：未获取到有效内容 ---")
             else:
-                print("!!! 发现结果 !!!")
-                text_info = page.locator("body").inner_text()
-                send_email("【好消息】教务系统有变化！", f"检测到页面更新：\n{text_info[:200]}...")
+                # 只有当包含具体的课程信息时才发邮件
+                body_text = page.locator("body").inner_text()
+                # 简单过滤，防止误报
+                if len(body_text) > 50: 
+                    print("!!! 发现新成绩 !!!")
+                    send_email("【成绩发布提醒】教务系统更新", f"发现页面变化，内容摘要：\n{body_text[:300]}...")
 
         except Exception as e:
             print(f"运行出错: {e}")
+            page.screenshot(path="exception.png")
         finally:
             browser.close()
 
