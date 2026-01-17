@@ -32,7 +32,10 @@ jobs:
           EMAIL_USER: ${{ secrets.EMAIL_USER }}
           EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
         run: python main.py
-
+      - name: Install dependencies
+        run: |
+          pip install selenium webdriver-manager requests
+          # 移除 playwright 相关内容
       # 关键步骤：上传截图供调试
       # 运行结束后，请在 Actions 页面底部的 Artifacts 区域下载查看
       - name: Upload Debug Screenshots
