@@ -4,25 +4,26 @@ on:
   schedule:
     # 每 30 分钟运行一次
     - cron: '*/30 * * * *'
-  workflow_dispatch: # 允许手动点按钮测试
+  workflow_dispatch: # 允许手动点击按钮触发
 
 jobs:
   check_grade:
     runs-on: ubuntu-latest
+    
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.9'
 
       - name: Install dependencies
-        # ↓↓↓ 注意这里：必须安装 playwright-stealth ↓↓↓
         run: |
-          pip install playwright playwright-stealth
+          pip install playwright
           playwright install chromium
+          # 只需要基础的 playwright，反爬虫逻辑已集成在 main.py 中
 
       - name: Run Monitor Script
         env:
@@ -32,9 +33,12 @@ jobs:
           EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
         run: python main.py
 
+      # 关键步骤：上传截图供调试
+      # 运行结束后，请在 Actions 页面底部的 Artifacts 区域下载查看
       - name: Upload Debug Screenshots
-        if: always()
+        if: always() 
         uses: actions/upload-artifact@v4
         with:
           name: debug-screenshots
           path: "*.png"
+          retention-days: 3
