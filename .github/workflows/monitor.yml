@@ -19,18 +19,39 @@ jobs:
         with:
           python-version: '3.9'
 
-      # --- 安装依赖：Selenium + OpenCV + 图像处理库 ---
+      # --- 安装Chrome浏览器（GitHub Actions自带，但确保最新版）---
+      - name: Setup Chrome
+        uses: browser-actions/setup-chrome@latest
+        with:
+          chrome-version: stable
+
+      # --- 安装依赖：undetected-chromedriver ---
       - name: Install dependencies
         run: |
-          pip install selenium webdriver-manager requests pillow opencv-python-headless numpy
+          pip install undetected-chromedriver requests
 
-      - name: Run Monitor Script
+      # --- 运行监控脚本（带重试机制）---
+      - name: Run Monitor Script with Retry
         env:
           STUDENT_ID: ${{ secrets.STUDENT_ID }}
           PASSWORD: ${{ secrets.PASSWORD }}
           EMAIL_USER: ${{ secrets.EMAIL_USER }}
           EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
-        run: python main.py
+        run: |
+          # 最多重试3次
+          for i in {1..3}; do
+            echo "尝试第 $i 次运行..."
+            if python main_undetected.py; then
+              echo "运行成功！"
+              exit 0
+            fi
+            if [ $i -lt 3 ]; then
+              echo "失败，等待2分钟后重试..."
+              sleep 120
+            fi
+          done
+          echo "3次尝试均失败"
+          exit 1
 
       # 上传截图（如果 Selenium 截图成功的话）
       - name: Upload Debug Screenshots
