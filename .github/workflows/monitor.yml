@@ -19,11 +19,10 @@ jobs:
         with:
           python-version: '3.9'
 
+      # --- 关键修改：安装 Selenium 和 Chrome 驱动管理库 ---
       - name: Install dependencies
         run: |
-          pip install playwright
-          playwright install chromium
-          # 只需要基础的 playwright，反爬虫逻辑已集成在 main.py 中
+          pip install selenium webdriver-manager requests
 
       - name: Run Monitor Script
         env:
@@ -32,12 +31,8 @@ jobs:
           EMAIL_USER: ${{ secrets.EMAIL_USER }}
           EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
         run: python main.py
-      - name: Install dependencies
-        run: |
-          pip install selenium webdriver-manager requests
-          # 移除 playwright 相关内容
-      # 关键步骤：上传截图供调试
-      # 运行结束后，请在 Actions 页面底部的 Artifacts 区域下载查看
+
+      # 上传截图（如果 Selenium 截图成功的话）
       - name: Upload Debug Screenshots
         if: always() 
         uses: actions/upload-artifact@v4
