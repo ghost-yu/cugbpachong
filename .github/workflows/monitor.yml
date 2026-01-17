@@ -2,9 +2,8 @@ name: Grade Monitor
 
 on:
   schedule:
-    # 每 30 分钟运行一次 (因为 Token 1小时失效，我们每次都是重新登录，所以频率可以随便定)
     - cron: '*/30 * * * *'
-  workflow_dispatch: # 允许手动点击按钮测试
+  workflow_dispatch:
 
 jobs:
   check_grade:
@@ -30,3 +29,11 @@ jobs:
           EMAIL_USER: ${{ secrets.EMAIL_USER }}
           EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
         run: python main.py
+
+      # --- 新增：上传截图供调试 ---
+      - name: Upload Debug Screenshots
+        if: always() # 即使脚本报错也上传
+        uses: actions/upload-artifact@v4  # 注意：GitHub Actions 现在推荐 v4 版本
+        with:
+          name: debug-screenshots
+          path: "*.png"
