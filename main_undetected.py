@@ -255,17 +255,29 @@ def run():
     # 配置选项
     options = uc.ChromeOptions()
     
-    # GitHub Actions需要无头模式
-    options.add_argument("--headless=new")
+    # 检查是否在GitHub Actions环境
+    is_github_actions = os.environ.get('GITHUB_ACTIONS')
+    
+    if is_github_actions:
+        # GitHub Actions需要无头模式
+        print("🔹 运行在GitHub Actions环境（无头模式）")
+        options.add_argument("--headless=new")
+    else:
+        # 本地运行使用有头模式（通过率更高）
+        print("🔹 运行在本地环境（有头模式 - 通过率更高）")
+    
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
     options.add_argument("--window-size=1920,1080")
     options.add_argument("--disable-blink-features=AutomationControlled")
     
-    # 创建 undetected driver（自动绕过检测）
+    # 创建 undetected driver
     try:
-        driver = uc.Chrome(options=options, version_main=None, headless=True)
+        if is_github_actions:
+            driver = uc.Chrome(options=options, version_main=None, headless=True)
+        else:
+            driver = uc.Chrome(options=options, version_main=None)
     except Exception as e:
         print(f"⚠️  创建driver失败: {e}")
         print("尝试使用备用方式...")
