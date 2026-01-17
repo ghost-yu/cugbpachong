@@ -2,8 +2,6 @@ import os
 import smtplib
 from email.mime.text import MIMEText
 from playwright.sync_api import sync_playwright
-# 必须引入 stealth
-from playwright_stealth import stealth_sync
 import time
 import random
 
@@ -33,42 +31,45 @@ def send_email(subject, content):
     except Exception as e:
         print(f"邮件发送失败: {e}")
 
-# 更加平滑的仿真轨迹算法
+# 仿真鼠标滑动算法
 def mouse_slide(page, start_x, start_y, end_x, end_y):
-    # 1. 鼠标先移动到起点 (模拟人类寻找滑块的过程)
-    page.mouse.move(start_x, start_y, steps=10)
+    # 1. 移动到滑块起点
+    page.mouse.move(start_x, start_y, steps=5)
     time.sleep(0.2)
     page.mouse.down()
     
-    # 2. 计算距离
+    # 2. 计算滑动轨迹
     distance = end_x - start_x
-    steps = random.randint(25, 35) # 步数更多，更细腻
+    # 增加步数，让动作更慢更自然
+    steps = random.randint(30, 45) 
     
     for i in range(steps):
-        # 缓动函数：先快后慢
+        # 缓动算法：模拟人手先快后慢
         progress = i / steps
-        # easeOutQuad 算法
-        move_x = start_x + distance * (1 - (1 - progress) * (1 - progress))
+        # 使用 easeOutCubic 曲线
+        rate = 1 - pow(1 - progress, 3)
         
-        # Y轴微小抖动
-        move_y = start_y + random.uniform(-3, 3)
+        move_x = start_x + distance * rate
+        # Y轴随机微颤，模拟手抖
+        move_y = start_y + random.uniform(-2, 2)
         
         page.mouse.move(move_x, move_y)
+        # 随机时间间隔
         time.sleep(random.uniform(0.01, 0.03))
     
-    # 3. 滑到终点后稍微停顿
+    # 3. 到达终点微调
     page.mouse.move(end_x, end_y)
-    time.sleep(0.5)
+    time.sleep(0.6) # 停顿一下，模拟确认
     page.mouse.up()
 
 def run():
     with sync_playwright() as p:
-        # 启动参数优化
+        # 启动配置
         browser = p.chromium.launch(
             headless=True,
             args=[
                 "--no-sandbox",
-                "--disable-blink-features=AutomationControlled",
+                "--disable-blink-features=AutomationControlled", # 关键：禁用自动化特征
                 "--disable-infobars",
                 "--window-size=1920,1080"
             ]
@@ -78,33 +79,51 @@ def run():
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
         )
         
-        # --- 关键：开启隐身模式 ---
+        # --- 手动注入隐身 JS (替代那个报错的库) ---
+        context.add_init_script("""
+            // 抹除 webdriver 属性，这是最明显的机器人特征
+            Object.defineProperty(navigator, 'webdriver', {
+                get: () => undefined
+            });
+            // 伪装插件列表
+            Object.defineProperty(navigator, 'plugins', {
+                get: () => [1, 2, 3]
+            });
+            // 伪装语言
+            Object.defineProperty(navigator, 'languages', {
+                get: () => ['zh-CN', 'zh']
+            });
+        """)
+
         page = context.new_page()
-        stealth_sync(page) 
 
         try:
             print("1. 访问登录页...")
             page.goto(LOGIN_URL)
             page.wait_for_load_state("networkidle")
             
-            # 确保页面元素加载完毕
-            page.wait_for_selector("#username", state="visible")
+            # 等待输入框出现
+            try:
+                page.wait_for_selector("#username", state="visible", timeout=10000)
+            except:
+                print("页面加载超时，截图保存")
+                page.screenshot(path="load_error.png")
+                return
             
             print("2. 填写账号密码...")
             page.fill("#username", STUDENT_ID)
             page.fill("#password", PASSWORD)
             time.sleep(1)
 
-            # 重试机制：如果第一次没滑成功，再试一次
+            # 最多重试2次滑块
             for attempt in range(2):
-                print(f"3. 处理滑块 (第 {attempt+1} 次尝试)...")
+                print(f"3. 处理滑块 (第 {attempt+1} 次)...")
                 
                 slider = page.locator(".captcha-move-drag")
                 container = page.locator("#j_digitPicture")
                 
-                # 强制等待滑块可见
                 if not slider.is_visible():
-                    print("   滑块不可见，可能无需验证或页面加载失败")
+                    print("   滑块未出现，可能不需要验证")
                     break
 
                 slider_box = slider.bounding_box()
@@ -115,23 +134,20 @@ def run():
                     start_y = slider_box["y"] + slider_box["height"] / 2
                     end_x = start_x + container_box["width"] - slider_box["width"]
                     
-                    # 执行滑动
+                    # 执行拟人滑动
                     mouse_slide(page, start_x, start_y, end_x, start_y)
                     
-                    # 等待验证结果
                     time.sleep(2)
                     
-                    # 检查是否出现成功标志（通常成功后滑块上的文字会变，或者出现对勾）
-                    # 这里通过判断是否还在登录页来侧面验证
+                    # 尝试点击登录
                     page.click("#enterBtn")
-                    time.sleep(3) # 等待跳转
+                    time.sleep(3)
                     
                     if "login" not in page.url:
-                        print("   验证成功，正在跳转...")
+                        print("   验证成功，跳转中...")
                         break
                     else:
-                        print("   验证失败，准备重试...")
-                        # 刷新页面重置滑块
+                        print("   验证失败，刷新重试...")
                         if attempt == 0:
                             page.reload()
                             page.wait_for_load_state("networkidle")
@@ -139,40 +155,13 @@ def run():
                             page.fill("#password", PASSWORD)
                             time.sleep(1)
 
-            # 最终检查
             page.wait_for_load_state("networkidle")
             
+            # 最终验证
             if "login" in page.url:
-                print("【最终失败】无法通过滑块验证。")
-                page.screenshot(path="final_error.png")
+                print("【最终失败】无法通过滑块。")
+                page.screenshot(path="final_failed.png") # 失败截图
                 return
 
             print("4. 登录成功！获取成绩...")
-            # 必须等待 cookie 种下
-            time.sleep(3)
-            page.goto(TARGET_URL)
-            time.sleep(3)
-            
-            content = page.content()
-            page.screenshot(path="result_page.png") # 截图留底
-
-            if "暂无审查结果" in content:
-                print("--- 监控中：暂无结果 ---")
-            elif "error" in content:
-                print("--- 异常：未获取到有效内容 ---")
-            else:
-                # 只有当包含具体的课程信息时才发邮件
-                body_text = page.locator("body").inner_text()
-                # 简单过滤，防止误报
-                if len(body_text) > 50: 
-                    print("!!! 发现新成绩 !!!")
-                    send_email("【成绩发布提醒】教务系统更新", f"发现页面变化，内容摘要：\n{body_text[:300]}...")
-
-        except Exception as e:
-            print(f"运行出错: {e}")
-            page.screenshot(path="exception.png")
-        finally:
-            browser.close()
-
-if __name__ == "__main__":
-    run()
+            time.sleep(2
