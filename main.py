@@ -11,6 +11,7 @@ PASSWORD = os.environ.get("PASSWORD")
 EMAIL_USER = os.environ.get("EMAIL_USER")
 EMAIL_PASS = os.environ.get("EMAIL_PASS")
 
+# 登录和目标网址
 LOGIN_URL = "https://cas.cugb.edu.cn/login?service=https%3A%2F%2Fportal.cugb.edu.cn%2Fmanage%2Fcommon%2Fcas_login%2F30001%3Fredirect%3Dhttps%253A%252F%252Fportal.cugb.edu.cn"
 TARGET_URL = "https://jwglxt.cugb.edu.cn/academic/studentcheckscore/studentCheckresultList.do"
 
@@ -79,7 +80,7 @@ def run():
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
         )
         
-        # --- 手动注入隐身 JS (替代那个报错的库) ---
+        # --- 手动注入隐身 JS (替代 playwight-stealth 库) ---
         context.add_init_script("""
             // 抹除 webdriver 属性，这是最明显的机器人特征
             Object.defineProperty(navigator, 'webdriver', {
@@ -164,4 +165,29 @@ def run():
                 return
 
             print("4. 登录成功！获取成绩...")
-            time.sleep(2
+            time.sleep(2) # 等待 Cookie 写入
+            page.goto(TARGET_URL)
+            time.sleep(3)
+            
+            content = page.content()
+            page.screenshot(path="result_page.png") # 成功截图
+
+            if "暂无审查结果" in content:
+                print("--- 监控中：暂无结果 ---")
+            elif "error" in content:
+                print("--- 异常：内容无效 ---")
+            else:
+                body_text = page.locator("body").inner_text()
+                # 简单过滤，防止误报，内容太短通常是报错信息
+                if len(body_text) > 50:
+                    print("!!! 发现结果 !!!")
+                    send_email("【成绩提醒】系统有更新", f"内容摘要：\n{body_text[:300]}...")
+
+        except Exception as e:
+            print(f"运行出错: {e}")
+            page.screenshot(path="exception.png")
+        finally:
+            browser.close()
+
+if __name__ == "__main__":
+    run()
