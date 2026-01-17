@@ -37,3 +37,7 @@ jobs:
         with:
           name: debug-screenshots
           path: "*.png"
+      - name: Install dependencies
+        run: |
+          pip install playwright playwright-stealth  # <--- 增加这个库
+          playwright install chromium
