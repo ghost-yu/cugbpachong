@@ -2,8 +2,9 @@ name: Grade Monitor
 
 on:
   schedule:
+    # 每 30 分钟运行一次
     - cron: '*/30 * * * *'
-  workflow_dispatch:
+  workflow_dispatch: # 允许手动点按钮测试
 
 jobs:
   check_grade:
@@ -18,8 +19,9 @@ jobs:
           python-version: '3.9'
 
       - name: Install dependencies
+        # ↓↓↓ 注意这里：必须安装 playwright-stealth ↓↓↓
         run: |
-          pip install playwright
+          pip install playwright playwright-stealth
           playwright install chromium
 
       - name: Run Monitor Script
@@ -30,14 +32,9 @@ jobs:
           EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
         run: python main.py
 
-      # --- 新增：上传截图供调试 ---
       - name: Upload Debug Screenshots
-        if: always() # 即使脚本报错也上传
-        uses: actions/upload-artifact@v4  # 注意：GitHub Actions 现在推荐 v4 版本
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
           name: debug-screenshots
           path: "*.png"
-      - name: Install dependencies
-        run: |
-          pip install playwright playwright-stealth  # <--- 增加这个库
-          playwright install chromium
