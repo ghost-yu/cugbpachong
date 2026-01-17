@@ -1,0 +1,32 @@
+name: Grade Monitor
+
+on:
+  schedule:
+    # 每 30 分钟运行一次 (因为 Token 1小时失效，我们每次都是重新登录，所以频率可以随便定)
+    - cron: '*/30 * * * *'
+  workflow_dispatch: # 允许手动点击按钮测试
+
+jobs:
+  check_grade:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          pip install playwright
+          playwright install chromium
+
+      - name: Run Monitor Script
+        env:
+          STUDENT_ID: ${{ secrets.STUDENT_ID }}
+          PASSWORD: ${{ secrets.PASSWORD }}
+          EMAIL_USER: ${{ secrets.EMAIL_USER }}
+          EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
+        run: python main.py
