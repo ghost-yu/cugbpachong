@@ -150,16 +150,48 @@ def try_slider_verification(driver, max_attempts=5):
                 print("✓ 未检测到滑块，可以登录")
                 return True
             
-            # 获取容器宽度
-            container = driver.find_element(By.ID, "j_digitPicture")
-            container_width = container.size['width']
-            slider_width = slider.size['width']
+            # 获取容器宽度 - 使用正确的选择器
+            try:
+                # 尝试多个可能的容器选择器
+                container = None
+                for selector in [".captcha-move-img", ".captcha-move-track", "#j_digitPicture"]:
+                    try:
+                        container = driver.find_element(By.CSS_SELECTOR, selector)
+                        if container.size['width'] > 200:  # 容器应该比较宽
+                            break
+                    except:
+                        continue
+                
+                if not container:
+                    container = driver.find_element(By.ID, "j_digitPicture")
+                
+                container_width = container.size['width']
+                
+                # 滑块本身的实际宽度（通常是按钮宽度，不是整个容器）
+                slider_width = slider.size['width']
+                
+                # 如果滑块宽度异常（太宽），使用固定值
+                if slider_width > 100 or slider_width == container_width:
+                    print(f"   检测到异常滑块宽度: {slider_width}px，使用默认值40px")
+                    slider_width = 40
+                    
+            except Exception as e:
+                print(f"   获取容器信息失败: {e}，使用默认值")
+                container_width = 300
+                slider_width = 40
             
             # 计算目标距离（多种策略）
+            # 确保可移动距离合理
+            movable_distance = container_width - slider_width
+            
+            if movable_distance < 50:
+                print(f"   ⚠️  可移动距离过小: {movable_distance}px，使用备用计算")
+                movable_distance = 240  # 使用经验值
+            
             strategies = [
-                lambda: int((container_width - slider_width) * random.uniform(0.65, 0.75)),  # 保守
-                lambda: int((container_width - slider_width) * random.uniform(0.70, 0.80)),  # 中等
-                lambda: int((container_width - slider_width) * random.uniform(0.75, 0.85)),  # 激进
+                lambda: int(movable_distance * random.uniform(0.65, 0.75)),  # 保守
+                lambda: int(movable_distance * random.uniform(0.70, 0.80)),  # 中等
+                lambda: int(movable_distance * random.uniform(0.75, 0.85)),  # 激进
             ]
             
             strategy = strategies[attempt % len(strategies)]
@@ -167,10 +199,12 @@ def try_slider_verification(driver, max_attempts=5):
             
             # 添加随机偏移
             distance += random.randint(-8, 8)
-            distance = max(10, min(distance, container_width - slider_width - 10))
+            
+            # 确保距离在合理范围内
+            distance = max(150, min(distance, movable_distance - 10))  # 最小150px，更合理
             
             print(f"   策略: {'保守' if attempt % 3 == 0 else '中等' if attempt % 3 == 1 else '激进'}")
-            print(f"   容器: {container_width}px, 滑块: {slider_width}px")
+            print(f"   容器: {container_width}px, 滑块: {slider_width}px, 可移动: {movable_distance}px")
             
             # 执行拖动
             human_like_drag(driver, slider, distance)
