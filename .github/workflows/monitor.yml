@@ -19,10 +19,10 @@ jobs:
         with:
           python-version: '3.9'
 
-      # --- 关键修改：安装 Selenium 和 Chrome 驱动管理库 ---
+      # --- 安装依赖：Selenium + OpenCV + 图像处理库 ---
       - name: Install dependencies
         run: |
-          pip install selenium webdriver-manager requests
+          pip install selenium webdriver-manager requests pillow opencv-python-headless numpy
 
       - name: Run Monitor Script
         env:

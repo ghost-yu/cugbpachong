@@ -4,6 +4,10 @@ import random
 import math
 import smtplib
 from email.mime.text import MIMEText
+from io import BytesIO
+from PIL import Image
+import numpy as np
+import cv2
 
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
